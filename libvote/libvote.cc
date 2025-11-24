@@ -50,8 +50,6 @@ bool parse_int(std::istream &stream, i32 &integer) {
 		try {
 			integer = std::stoi(s);
 		} catch (std::invalid_argument const &e) {
-			/* EXC(e, "failed to interpret '", s, "' as signed 32-bit integer");
-			 */
 			success = false;
 			stream.seekg(pos);
 		}
@@ -95,9 +93,8 @@ bool parse_participants(std::istream                    &stream,
                         usize                            count) {
 	bool        guess;
 	std::string s;
-	usize       i;
 
-	for (i = 0, guess = (count == 0); guess || i < count; ++i) {
+	for (guess = (count == 0); guess || count > 0; --count) {
 		i32                choice;
 		struct participant p;
 
@@ -125,9 +122,18 @@ bool parse_participants(std::istream                    &stream,
 } // namespace parser
 
 namespace algorithm {
+/**
+ * Structure interne servant de compteur de votes pour chaque glace
+ */
 struct choice {
+	/**
+	 * Nom de la glace
+	 */
 	std::string name;
-	u32         votes;
+	/**
+	 * Nombre de votes accumules
+	 */
+	u32 votes;
 };
 
 usize two_round(std::vector<std::string>              &choice_names,

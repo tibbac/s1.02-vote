@@ -8,9 +8,9 @@ QMAKE != sh -ce 'command -v qmake || \
 	{ [ -d /usr/lib/qt6 ] && echo "/usr/lib/qt6/bin/qmake"; } || \
 	{ [ -d /usr/lib/qt5 ] && echo "/usr/lib/qt5/bin/qmake"; }'
 
-all: release
+all: release docs
 
-run: all
+run: build
 	$(OUT_DIR)/vote/vote
 
 debug: QMAKEFLAGS += CONFIG+=debug
@@ -28,6 +28,9 @@ build:
 
 format:
 	clang-format -i -- $$(find . -type f -name '*.cc' -o -name '*.hh')
+
+docs:
+	doxygen
 
 clean:
 	test -f $(OUT_DIR)/Makefile && cd $(OUT_DIR) && $(MAKE) clean || :
