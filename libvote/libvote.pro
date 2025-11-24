@@ -1,6 +1,7 @@
 TEMPLATE = lib
-TARGET = vote
 CONFIG -= qt
+CONFIG += staticlib
+TARGET = vote
 HEADERS += libvote.hh
 SOURCES += libvote.cc
 

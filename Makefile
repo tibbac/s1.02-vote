@@ -27,7 +27,7 @@ build:
 	test -f $(OUT_DIR)/Makefile && cd $(OUT_DIR) && $(MAKE) all
 
 format:
-	clang-format -i $$(find . -type f -name '*.cc' -o -name '*.hh')
+	clang-format -i -- $$(find . -type f -name '*.cc' -o -name '*.hh')
 
 clean:
 	test -f $(OUT_DIR)/Makefile && cd $(OUT_DIR) && $(MAKE) clean || :
