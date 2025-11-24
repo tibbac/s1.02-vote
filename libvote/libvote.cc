@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <ctime>
 
 namespace vote {
 namespace parser {
@@ -136,7 +138,7 @@ struct choice {
 	u32 votes;
 };
 
-usize two_round(std::vector<std::string>              &choice_names,
+usize two_round(std::vector<std::string> const        &choice_names,
                 std::vector<struct participant> const &participants) {
 	std::vector<struct choice> choices;
 
@@ -161,11 +163,63 @@ usize two_round(std::vector<std::string>              &choice_names,
 	                     std::max_element(choices.begin(), choices.end(), cmp));
 }
 
-usize ranked(std::vector<std::string>              &choice_names,
+usize ranked(std::vector<std::string> const        &choice_names,
              std::vector<struct participant> const &participants);
 
 usize instant_runoff(std::vector<std::string>              &choice_names,
                      std::vector<struct participant> const &participants);
 } // namespace algorithm
+
+namespace generator {
+void init() { std::srand(std::time(0)); }
+
+bool generate_participants(
+	std::ostream &stream, std::vector<std::string> const &choices,
+	std::vector<struct participant_name> const &participants,
+	bool                                        multiple_choices) {
+
+	std::vector<usize> indices(choices.size());
+	usize              i;
+
+	for (i = 0; i < indices.size(); ++i) {
+		indices[i] = i + 1;
+	}
+
+	stream << "// fichier genere automatiquement" << std::endl << std::endl;
+
+	stream << "// glaces" << std::endl << std::endl;
+	for (std::string s : choices) {
+		stream << s << std::endl;
+	}
+	stream << std::endl;
+
+	stream << "// participants" << std::endl << std::endl;
+	for (struct participant_name p : participants) {
+		usize p_choice_count;
+
+		stream << p.last_name << std::endl;
+		stream << p.first_name << std::endl;
+
+		p_choice_count =
+			multiple_choices ? ((usize)std::rand() % indices.size()) : 1;
+		p_choice_count = std::max(p_choice_count, (usize)1);
+
+		for (i = 0; i < p_choice_count; ++i) {
+			usize j;
+			j = (usize)std::rand() % indices.size();
+			std::swap(indices[i], indices[j]);
+		}
+
+		for (i = 0; i < p_choice_count; ++i) {
+			stream << indices[i] << std::endl;
+		}
+
+		stream << std::endl;
+	}
+	stream << std::endl;
+
+	return bool(stream);
+}
+} // namespace generator
 } // namespace vote
 

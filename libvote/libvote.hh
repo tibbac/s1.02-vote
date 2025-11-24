@@ -21,16 +21,26 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef size_t   usize;
 
-template <typename T> constexpr T min(T x, T y) { return x < y ? x : y; }
-
-template <typename T> constexpr T max(T x, T y) { return x > y ? x : y; }
-
 /**
  * Espace de nommage principal de la bibliotheque
  */
 namespace vote {
 /**
- * Structure representant un participant dans un vote.
+ * Structure representant le prenom et le nom de famille d'un participant
+ */
+struct participant_name {
+	/**
+	 * Nom de famille du participant
+	 */
+	std::string last_name;
+	/**
+	 * Prenom du participant
+	 */
+	std::string first_name;
+};
+
+/**
+ * Structure representant un participant d'un vote
  */
 struct participant {
 	/**
@@ -113,7 +123,7 @@ namespace algorithm {
  * @return  L'indice de la glace dans le vecteur <code>choices</code> qui a
  * gagne.
  */
-usize two_round(std::vector<std::string>              &choices,
+usize two_round(std::vector<std::string> const        &choices,
                 std::vector<struct participant> const &participants);
 
 /**
@@ -124,7 +134,7 @@ usize two_round(std::vector<std::string>              &choices,
  * @return  L'indice de la glace dans le vecteur <code>choices</code> qui a
  * gagne.
  */
-usize ranked(std::vector<std::string>              &choices,
+usize ranked(std::vector<std::string> const        &choices,
              std::vector<struct participant> const &participants);
 
 /**
@@ -135,8 +145,35 @@ usize ranked(std::vector<std::string>              &choices,
  * @return  L'indice de la glace dans le vecteur <code>choices</code> qui a
  * gagne.
  */
-usize instant_runoff(std::vector<std::string>              &choices,
+usize instant_runoff(std::vector<std::string> const        &choices,
                      std::vector<struct participant> const &participants);
 } // namespace algorithm
+
+/**
+ * Utilites de generation de votes aleatoires
+ */
+namespace generator {
+/**
+ * Initialisation du generateur de nombres pseudo-aleatoires
+ */
+void init();
+
+/**
+ * Generation de fichier d'entree pour un vote.
+ * Les choix de chaque participant seront aleatoires.
+ *
+ * @param stream             Le flux de sortie (peut etre un
+ *                           <code>std::ofstream</code>)
+ * @param choices            Noms des glaces
+ * @param participant_names  Noms des participants
+ * @param multiple_choices   Indique si un participant peut voter pour
+ *                           plusieurs glaces
+ * @return
+ */
+bool generate_participants(
+	std::ostream &stream, std::vector<std::string> const &choices,
+	std::vector<struct participant_name> const &participant_names,
+	bool                                        multiple_choices);
+} // namespace generator
 } // namespace vote
 
