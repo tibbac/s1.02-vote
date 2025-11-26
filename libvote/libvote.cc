@@ -10,6 +10,79 @@
 #include <ctime>
 
 namespace vote {
+bool get_ballot(std::vector<struct candidate>   candidates,
+                std::vector<struct participant> participants,
+                struct ballot                  &b) {
+	for (struct candidate &candidate : candidates) {
+		candidate.votes      = 0;
+		candidate.last_votes = 0;
+		candidate.eliminated = false;
+	}
+
+	/* verification de l'entree utilisateur */
+	for (struct participant participant : participants) {
+		for (i32 id : participant.votes) {
+			if (id < 1 || (usize)id > candidates.size()) {
+				return false;
+			}
+		}
+	}
+
+	b.candidates   = candidates;
+	b.participants = participants;
+	b.round        = 1;
+
+	return true;
+}
+
+std::vector<struct candidate>::iterator find_candidate(struct ballot &ballot,
+                                                       i32 candidate_id) {
+	auto pred = [candidate_id](struct candidate const &c) {
+		return c.id == candidate_id;
+	};
+	auto it =
+		std::find_if(ballot.candidates.begin(), ballot.candidates.end(), pred);
+	return it;
+}
+
+bool is_winner(struct ballot const &ballot, i32 candidate_id) {
+	auto it =
+		std::find(ballot.winners.begin(), ballot.winners.end(), candidate_id);
+	return it != ballot.winners.end();
+}
+
+bool is_eliminated(struct ballot &ballot, i32 candidate_id) {
+	auto it = find_candidate(ballot, candidate_id);
+	return it != ballot.candidates.end() && it->eliminated;
+}
+
+void print_vote(struct ballot &ballot) {
+	std::vector<struct candidate> candidates;
+
+	candidates = ballot.candidates;
+	std::sort(candidates.begin(), candidates.end(), compare_candidates);
+	std::reverse(candidates.begin(), candidates.end());
+
+	std::cerr << "Round " << ballot.round << std::endl;
+
+	for (struct vote::candidate c : candidates) {
+		if (is_winner(ballot, c.id)) {
+			std::cerr << "Winner: ";
+		}
+
+		std::cerr << "(id: " << c.id << ") " << c.name << " (" << std::round(1000 * algorithm::get_vote_fraction(ballot, c)) / 10 << "%): " << c.votes
+				  << " votes";
+
+		if (c.last_votes > 0) {
+			std::cerr << " (" << c.last_votes << " last place votes)";
+		}
+
+		std::cerr << std::endl;
+	}
+
+	std::cerr << std::endl;
+}
+
 namespace parser {
 static bool is_last_name(std::string const &s) {
 	for (char c : s) {
@@ -20,12 +93,12 @@ static bool is_last_name(std::string const &s) {
 	return true;
 }
 
-bool parse_string(std::istream &stream, std::string &string) {
-	bool success;
-	i32  pos;
+bool read_string(std::istream &stream, std::string &string) {
+	for (;;) {
+		if (!std::getline(stream, string)) {
+			return false;
+		}
 
-	for (; pos = stream.tellg(),
-	       (success = (bool)std::getline(stream, string));) {
 		/* si la ligne est vide, contient que des espaces, ou est un commentaire
 		 * on l'ignore */
 		if (string.empty() ||
@@ -33,57 +106,70 @@ bool parse_string(std::istream &stream, std::string &string) {
 		    string.rfind("//", 0) == 0) {
 			continue;
 		}
-		break;
-	}
-	if (!success) {
-		stream.seekg(pos);
-	}
 
-	return success;
+		return true;
+	}
 }
 
 bool parse_int(std::istream &stream, i32 &integer) {
-	bool        success;
-	i32         pos;
-	std::string s;
+	std::streampos pos;
+	std::string    s;
 
 	pos = stream.tellg();
-	if ((success = parse_string(stream, s))) {
+
+	if (read_string(stream, s)) {
 		try {
 			integer = std::stoi(s);
+			return true;
 		} catch (std::invalid_argument const &e) {
-			success = false;
-			stream.seekg(pos);
+		} catch (std::out_of_range const &e) {
 		}
+
+		stream.seekg(pos, std::ios::beg);
 	}
 
-	return success;
+	return false;
 }
 
-bool parse_choices(std::istream &stream, std::vector<std::string> &choices,
-                   usize count) {
-	bool        guess;
-	i32         pos;
-	std::string s;
+bool parse_candidates(std::istream                  &stream,
+                      std::vector<struct candidate> &candidates, usize count) {
+	bool guess;
+	i32  i;
 
-	for (guess = (count == 0); guess || count > 0; guess && --count) {
+	for (i = 1, guess = (count == 0); guess || (count > 0);
+	     ++i, guess && --count) {
+
+		std::streampos pos;
+		std::string    s;
+
 		pos = stream.tellg();
-		if (!parse_string(stream, s)) {
+		if (!read_string(stream, s)) {
 			return false;
 		}
+
 		/* une solution plus simple pourrait etre d'enlever cette clause et
 		 * se baser entierement sur le parametre count en hardcodant le nombre
 		 * de glaces, ou d'utiliser un autre format pour l'entree du programme,
 		 * mais ceci marche directement :
 		 */
-		/* si on retrouve une ligne avec que des majuscules, on suppose qu'on
+		/*
+		 * si on retrouve une ligne avec que des majuscules, on suppose qu'on
 		 * est passe aux participants car cela ressemble a un nom de famille
-		 * (pour eviter de hardcoder le nombre de glaces, 4) */
+		 * (pour eviter de hardcoder le nombre de glaces, 4)
+		 */
 		if (guess && is_last_name(s)) {
-			stream.seekg(pos);
+			stream.seekg(pos, std::ios::beg);
 			break;
 		} else {
-			choices.push_back(s);
+			struct candidate candidate;
+
+			candidate.id         = i;
+			candidate.name       = s;
+			candidate.votes      = 0;
+			candidate.last_votes = 0;
+			candidate.eliminated = false;
+
+			candidates.push_back(candidate);
 		}
 	}
 
@@ -93,30 +179,30 @@ bool parse_choices(std::istream &stream, std::vector<std::string> &choices,
 bool parse_participants(std::istream                    &stream,
                         std::vector<struct participant> &participants,
                         usize                            count) {
-	bool        guess;
-	std::string s;
+	bool guess;
 
-	for (guess = (count == 0); guess || count > 0; --count) {
-		i32                choice;
-		struct participant p;
+	for (guess = (count == 0); guess || (count > 0); --count) {
+		struct participant participant;
+		std::string        tmp;
+		i32                id;
 
-		if (!parse_string(stream, p.last_name)) {
-			return guess;
+		if (!read_string(stream, participant.last_name)) {
+			return guess && stream.eof();
 		}
-		if (!parse_string(stream, p.first_name)) {
+		if (!read_string(stream, participant.first_name)) {
 			return false;
 		}
-		while (parse_int(stream, choice)) {
-			if (choice < 1) {
+		while (parse_int(stream, id)) {
+			if (id < 1) {
 				return false;
 			}
-			p.choices.push_back(choice - 1);
+			participant.votes.push_back(id);
 		}
-		if (p.choices.size() == 0) {
+		if (participant.votes.size() == 0) {
 			return false;
 		}
 
-		participants.push_back(p);
+		participants.push_back(participant);
 	}
 
 	return true;
@@ -124,98 +210,87 @@ bool parse_participants(std::istream                    &stream,
 } // namespace parser
 
 namespace algorithm {
-/**
- * Structure interne servant de compteur de votes pour chaque glace
- */
-struct choice {
-	/**
-	 * Nom de la glace
-	 */
-	std::string name;
-	/**
-	 * Nombre de votes accumules
-	 */
-	u32 votes;
-};
-
-usize two_round(std::vector<std::string> const        &choice_names,
-                std::vector<struct participant> const &participants) {
-	std::vector<struct choice> choices;
-
-	for (std::string choice_name : choice_names) {
-		struct choice c;
-		c.name  = choice_name;
-		c.votes = 0;
-		choices.push_back(c);
-	}
-
-	for (struct participant p : participants) {
-		for (u32 choice_index : p.choices) {
-			if (choice_index < 0 || choice_index >= choices.size()) {
-				return std::string::npos;
-			}
-			++choices[choice_index].votes;
+void begin_round(struct ballot &ballot) {
+	for (struct candidate &candidate : ballot.candidates) {
+		if (!candidate.eliminated) {
+			candidate.votes = 0;
 		}
 	}
 
-	auto cmp = [](auto const &a, auto const &b) { return a.votes < b.votes; };
-	return std::distance(choices.begin(),
-	                     std::max_element(choices.begin(), choices.end(), cmp));
+	ballot.winners.clear();
 }
 
-usize ranked(std::vector<std::string> const        &choice_names,
-             std::vector<struct participant> const &participants);
+double get_vote_fraction(struct ballot          &ballot,
+                         struct candidate const &candidate) {
+	usize sum;
 
-usize instant_runoff(std::vector<std::string>              &choice_names,
-                     std::vector<struct participant> const &participants);
+	sum = 0;
+	for (struct candidate c : ballot.candidates) {
+		if (!is_eliminated(ballot, c.id)) {
+			sum += c.votes;
+		}
+	}
+
+	return (double)candidate.votes / (double)sum;
+}
 } // namespace algorithm
 
 namespace generator {
 void init() { std::srand(std::time(0)); }
 
-bool generate_participants(
-	std::ostream &stream, std::vector<std::string> const &choices,
-	std::vector<struct participant_name> const &participants,
-	bool                                        multiple_choices) {
+bool generate_vote(std::ostream                        &stream,
+                   std::vector<struct candidate> const &candidates,
+                   std::vector<struct participant>     &participants,
+                   usize                                vote_count) {
 
-	std::vector<usize> indices(choices.size());
-	usize              i;
+	std::vector<i32> vote_indices(candidates.size());
+	usize            i;
 
-	for (i = 0; i < indices.size(); ++i) {
-		indices[i] = i + 1;
+	vote_count = std::min(vote_count, candidates.size());
+
+	for (i = 0; i < vote_indices.size(); ++i) {
+		vote_indices[i] = i + 1;
 	}
 
 	stream << "// fichier genere automatiquement" << std::endl << std::endl;
 
 	stream << "// glaces" << std::endl << std::endl;
-	for (std::string s : choices) {
-		stream << s << std::endl;
+
+	for (struct candidate candidate : candidates) {
+		stream << candidate.name << std::endl;
 	}
-	stream << std::endl;
 
-	stream << "// participants" << std::endl << std::endl;
-	for (struct participant_name p : participants) {
-		usize p_choice_count;
+	stream << std::endl << "// participants" << std::endl << std::endl;
 
-		stream << p.last_name << std::endl;
-		stream << p.first_name << std::endl;
+	for (struct participant &participant : participants) {
+		usize j;
+		usize n;
 
-		p_choice_count =
-			multiple_choices ? ((usize)std::rand() % indices.size()) : 1;
-		p_choice_count = std::max(p_choice_count, (usize)1);
+		stream << participant.last_name << std::endl;
+		stream << participant.first_name << std::endl;
 
-		for (i = 0; i < p_choice_count; ++i) {
-			usize j;
-			j = (usize)std::rand() % indices.size();
-			std::swap(indices[i], indices[j]);
+		if (vote_count == 0) {
+			n = 1 + (u32)std::rand() % vote_indices.size();
+		} else {
+			n = vote_count;
 		}
 
-		for (i = 0; i < p_choice_count; ++i) {
-			stream << indices[i] << std::endl;
+		participant.votes = vote_indices;
+
+		for (j = 0; j < n; ++j) {
+			std::swap(participant.votes[j],
+			          participant.votes[std::rand() % vote_indices.size()]);
+		}
+
+		participant.votes.resize(n);
+
+		for (j = 0; j < n; ++j) {
+			stream << participant.votes[j] << std::endl;
 		}
 
 		stream << std::endl;
 	}
+
 	stream << std::endl;
 
 	return bool(stream);
